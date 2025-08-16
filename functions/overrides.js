@@ -1,4 +1,3 @@
-// functions/overrides.js
 import { getStore } from "@netlify/blobs";
 
 const json = (data, status = 200) => ({
