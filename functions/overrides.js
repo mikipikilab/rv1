@@ -1,125 +1,107 @@
+// functions/overrides.js
 import { getStore } from "@netlify/blobs";
 
-const json = (data, status = 200, extra = {}) =>
-  new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      "content-type": "application/json",
-      "access-control-allow-origin": "*",
-      "access-control-allow-headers": "content-type, x-admin-key",
-      "access-control-allow-methods": "GET,POST,DELETE,OPTIONS",
-      ...extra,
-    },
-  });
+const json = (data, status = 200) => ({
+  statusCode: status,
+  headers: {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type, x-admin-key",
+    "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
+  },
+  body: JSON.stringify(data),
+});
 
-const isISO = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
-const isUS  = (s) => /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.test(s || "");
-
-const toISO = (s) => {
-  if (isISO(s)) return s;
-  const m = (s || "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (m) {
-    const [, mm, dd, yy] = m;
-    return `${yy}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
-  }
-  const d = new Date(s || "");
-  if (Number.isNaN(d.getTime())) return s;
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-};
-
-const toUS = (iso) => {
-  if (!isISO(iso)) return iso;
-  return `${iso.slice(5,7)}/${iso.slice(8,10)}/${iso.slice(0,4)}`;
+const getHeader = (headers, name) => {
+  if (!headers) return "";
+  const k = Object.keys(headers).find(h => h.toLowerCase() === name.toLowerCase());
+  return k ? headers[k] : "";
 };
 
 const ctEq = (a = "", b = "") => {
   if (typeof a !== "string" || typeof b !== "string") return false;
   let ok = a.length === b.length;
   const L = Math.max(a.length, b.length);
-  for (let i = 0; i < L; i++) ok &= (a.charCodeAt(i) || 0) === (b.charCodeAt(i) || 0);
+  for (let i = 0; i < L; i++) ok &= (a.charCodeAt(i)||0) === (b.charCodeAt(i)||0);
   return !!ok;
 };
 
-export default async (req) => {
-  if (req.method === "OPTIONS") return json({}, 204);
+const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
+async function getJsonSafe(store, key) {
+  try {
+    return await store.get(key, { type: "json" });
+  } catch (e) {
+    try {
+      const txt = await store.get(key, { type: "text" });
+      if (typeof txt === "string" && txt.trim()) {
+        try { return JSON.parse(txt); } catch {}
+      }
+    } catch {}
+    return null;
+  }
+}
+
+export const handler = async (event) => {
+  if (event.httpMethod === "OPTIONS") return json({}, 204);
+
+  const ADMIN_KEY = process.env.NETLIFY_ADMIN_KEY ?? "";
+  const adminConfigured = ADMIN_KEY.length > 0;
+  const method = (event.httpMethod || "GET").toUpperCase();
   const store = getStore("overrides");
 
+  const params = event?.queryStringParameters || {};
+  let oneDate = params.date || null;
+  if (!oneDate && event.rawUrl) { try { oneDate = new URL(event.rawUrl).searchParams.get("date"); } catch {} }
+  if (oneDate && !ISO.test(oneDate)) return json({ error: "invalid date" }, 400);
+
+  const reqKey = getHeader(event.headers, "x-admin-key");
+  const isAdmin = adminConfigured && ctEq(reqKey, ADMIN_KEY);
+
   try {
-    const url = new URL(req.url);
-    const dateParam = url.searchParams.get("date");
-    const method = req.method.toUpperCase();
-
-    const ADMIN_KEY = process.env.NETLIFY_ADMIN_KEY ?? "";
-    const adminConfigured = ADMIN_KEY.length > 0;
-    const reqKey = req.headers.get("x-admin-key") || "";
-    const isAdmin = adminConfigured && ctEq(reqKey, ADMIN_KEY);
-
     if (method === "GET") {
-      if (dateParam) {
-        const iso = toISO(dateParam);
-        // 1) try ISO key
-        let val = await store.get(iso, { type: "json" });
-        // 2) try US fallback if not found
-        if (val == null) {
-          const usKey = toUS(iso);
-          val = await store.get(usKey, { type: "json" });
-        }
-        return json({ [iso]: val ?? null });
+      if (oneDate) {
+        const val = await getJsonSafe(store, oneDate);
+        return json({ [oneDate]: val ?? null });
       }
-
-      // List all: normalize keys to ISO
-      const out = {};
+      const all = {};
       let cursor;
       do {
         const { blobs, cursor: next } = await store.list({ cursor });
         for (const b of blobs) {
-          const key = b.key;
-          const iso = isISO(key) ? key : (isUS(key) ? toISO(key) : key);
-          const current = await store.get(key, { type: "json" });
-          // prefer already-existing ISO over US duplicate
-          if (out[iso] == null) out[iso] = current;
+          if (!ISO.test(b.key)) continue; // ignoriši loše ključeve
+          const v = await getJsonSafe(store, b.key);
+          if (v && typeof v === "object" && ("closed" in v)) all[b.key] = v;
         }
         cursor = next;
       } while (cursor);
-      return json(out);
+      return json(all);
     }
 
     if (method === "POST") {
       if (!adminConfigured) return json({ error: "Admin key not configured" }, 500);
       if (!isAdmin)        return json({ error: "Unauthorized" }, 401);
 
-      let body = {};
-      try { body = await req.json(); } catch {}
-      const iso = toISO(body?.date || "");
-      if (!iso || !isISO(iso)) return json({ error: "date required" }, 400);
+      const body = JSON.parse(event.body || "{}");
+      const date = body?.date;
+      if (!date || !ISO.test(date)) return json({ error: "date required" }, 400);
 
-      const record = { closed: !!body.closed, start: null, end: null };
-      if (!record.closed) {
+      const rec = { closed: !!body.closed };
+      if (!rec.closed) {
         if (!body.start || !body.end) return json({ error: "start/end required" }, 400);
-        record.start = body.start;
-        record.end   = body.end;
+        rec.start = String(body.start);
+        rec.end   = String(body.end);
       }
-
-      // Save under ISO and clean up old US key if exists
-      await store.set(iso, record, { type: "json" });
-      const usKey = toUS(iso);
-      if (await store.get(usKey) != null) {
-        try { await store.delete(usKey); } catch {}
-      }
+      await store.set(date, rec, { type: "json" });
       return json({ ok: true });
     }
 
     if (method === "DELETE") {
       if (!adminConfigured) return json({ error: "Admin key not configured" }, 500);
       if (!isAdmin)        return json({ error: "Unauthorized" }, 401);
-      if (!dateParam)      return json({ error: "date required" }, 400);
+      if (!oneDate)        return json({ error: "date required" }, 400);
 
-      const iso = toISO(dateParam);
-      const usKey = toUS(iso);
-      // Delete both forms to be safe
-      try { await store.delete(iso); } catch {}
-      try { await store.delete(usKey); } catch {}
+      await store.delete(oneDate);
       return json({ ok: true });
     }
 
