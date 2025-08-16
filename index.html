@@ -161,7 +161,7 @@
     document.getElementById("adminPass").placeholder =
       (langSel.value==='en'?'Enter admin key':'Unesite admin ključ');
     renderStatus();
-    refreshOverridesTable();
+    // refreshOverridesTable(); // deferred until init
   }
   langSel.value = localStorage.getItem(LANG_KEY) || "sr";
   langSel.addEventListener("change", ()=>{ localStorage.setItem(LANG_KEY, langSel.value); applyI18N(); });
@@ -257,7 +257,7 @@
   async function loadOverrides() {
     try { overrides = await apiGetOverrides(); }
     catch(e){ overrides = {}; showMsg("msg", e.message, false); }
-    refreshOverridesTable();
+    // refreshOverridesTable(); // deferred until init
   }
 
   async function renderStatus() {
