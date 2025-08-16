@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Status ordinacije — Flatpickr</title>
+<title>Status ordinacije — Flatpickr (no return)</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <style>
   :root { color-scheme: light dark; }
@@ -34,6 +34,9 @@
   .section-title { margin:12px 0 4px; font-size:16px; }
   .grid-2 { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
   @media (max-width:700px){ .grid-2{ grid-template-columns:1fr; } }
+  #msg { margin-top:6px; min-height:20px; font-size:13px; }
+  .ok { color:#4ade80; }
+  .err { color:#ff6b6b; }
 </style>
 </head>
 <body>
@@ -55,19 +58,20 @@
     <div class="card">
       <div id="loginView">
         <h2 data-i18n="login_title">Admin prijava</h2>
-        <div class="row">
+        <div class="row" onsubmit="return false">
           <label for="adminPass" data-i18n="admin_key">Admin ključ:</label>
           <input type="password" id="adminPass" placeholder="Unesite admin ključ" />
-          <button class="btn" id="loginBtn" data-i18n="login_btn">Prijavi se</button>
-          <button class="btn secondary" id="closeModal1" data-i18n="close">Zatvori</button>
+          <button class="btn" id="loginBtn" type="button" data-i18n="login_btn">Prijavi se</button>
+          <button class="btn secondary" id="closeModal1" type="button" data-i18n="close">Zatvori</button>
         </div>
         <p class="muted" data-i18n="login_hint">Admin ključ se provjerava na serveru. Podaci se čuvaju globalno.</p>
+        <div id="msg"></div>
       </div>
 
       <div id="formView" style="display:none;">
         <div class="row" style="justify-content:space-between;">
           <h2 class="section-title" data-i18n="set_hours">Podesi radno vrijeme</h2>
-          <button class="btn secondary" id="closeModal2" data-i18n="close">Zatvori</button>
+          <button class="btn secondary" id="closeModal2" type="button" data-i18n="close">Zatvori</button>
         </div>
 
         <div class="grid-2">
@@ -90,9 +94,10 @@
             </div>
 
             <div class="row">
-              <button class="btn" id="saveOverride" data-i18n="save">Sačuvaj izuzetak</button>
-              <button class="btn secondary" id="deleteOverride" data-i18n="delete">Obriši izuzetak</button>
+              <button class="btn" id="saveOverride" type="button" data-i18n="save">Sačuvaj izuzetak</button>
+              <button class="btn secondary" id="deleteOverride" type="button" data-i18n="delete">Obriši izuzetak</button>
             </div>
+            <div id="msg2"></div>
             <p class="muted" data-i18n="closed_note">Ako je označeno “Neradni dan”, prikazaće se “Neradni dan” bez sati.</p>
           </div>
 
@@ -115,7 +120,7 @@
               <label><input type="checkbox" id="bulkOverwrite" checked /> <span data-i18n="bulk_overwrite">Prebriši postojeće izuzetke</span></label>
             </div>
             <div class="row">
-              <button class="btn" id="bulkApply" data-i18n="bulk_apply">Primijeni na opseg</button>
+              <button class="btn" id="bulkApply" type="button" data-i18n="bulk_apply">Primijeni na opseg</button>
             </div>
           </div>
         </div>
@@ -142,7 +147,7 @@
   /* ===== I18N ===== */
   const I18N = {
     sr:{admin:"⚙️ Admin",login_title:"Admin prijava",admin_key:"Admin ključ:",login_btn:"Prijavi se",close:"Zatvori",login_hint:"Admin ključ se provjerava na serveru. Podaci se čuvaju globalno.",set_hours:"Podesi radno vrijeme",single_date:"Pojedinačni datum",date:"Datum:",closed:"Neradni dan",from:"Od:",to:"Do:",save:"Sačuvaj izuzetak",delete:"Obriši izuzetak",closed_note:"Ako je označeno “Neradni dan”, prikazaće se “Neradni dan” bez sati.",bulk_title:"Brzo dupliranje na opseg",bulk_hint:"Kopira podešavanje iz izvornog datuma na svaki dan u opsegu.",bulk_source:"Izvorni datum:",bulk_from:"Opseg od:",bulk_to:"Opseg do:",bulk_overwrite:"Prebriši postojeće izuzetke",bulk_apply:"Primijeni na opseg",saved_overrides:"Sačuvani izuzeci",status:"Status",detail:"Detalj",action:"Akcija",open_txt:"Ordinacija je otvorena.",closed_txt:"Ordinacija je zatvorena.",closed_day:"Neradni dan.",sunday_closed:"Neradni dan (nedjelja).",hours_fmt:(s,e)=>`Radno vrijeme od ${s} do ${e} časova.`,none_saved:"Nema sačuvanih izuzetaka.",btn_delete:"Obriši",alert_saved:"Sačuvano.",alert_deleted:"Izuzetak obrisan.",alert_need_date:"Izaberi datum.",alert_need_key:"Unesi admin ključ.",alert_need_start_end:"Unesi i početak i kraj.",alert_end_after_start:"Vrijeme završetka mora biti posle početka.",confirm_sat_range:"Subota je standardno 10–14h. Želite li ipak sačuvati uneseni opseg?",wrong_key:"Pogrešan admin ključ.",server_key_missing:"Admin key nije podešen na serveru."},
-    en:{admin:"⚙️ Admin",login_title:"Admin login",admin_key:"Admin key:",login_btn:"Sign in",close:"Close",login_hint:"Key is validated on server. Data is stored globally.",set_hours:"Set working hours",single_date:"Single date",date:"Date:",closed:"Closed day",from:"From:",to:"To:",save:"Save override",delete:"Delete override",closed_note:"If “Closed day” is checked, no hours will be shown.",bulk_title:"Quick duplicate to range",bulk_hint:"Copies settings from source date to each day in range.",bulk_source:"Source date:",bulk_from:"Range from:",bulk_to:"Range to:",bulk_overwrite:"Overwrite existing overrides",bulk_apply:"Apply to range",saved_overrides:"Saved overrides",status:"Status",detail:"Detail",action:"Action",open_txt:"The clinic is open.",closed_txt:"The clinic is closed.",closed_day:"Closed day.",sunday_closed:"Closed (Sunday).",hours_fmt:(s,e)=>`Working hours ${s}–${e}.`,none_saved:"No overrides saved.",btn_delete:"Delete",alert_saved:"Saved.",alert_deleted:"Override deleted.",alert_need_date:"Pick a date.",alert_need_key:"Enter admin key.",alert_need_start_end:"Enter both start and end.",alert_end_after_start:"End must be after start.",confirm_sat_range:"Saturday is usually 10–14. Still save your custom range?",wrong_key:"Wrong admin key.",server_key_missing:"Admin key not configured on server."}
+    en:{admin:"⚙️ Admin",login_title:"Admin login",admin_key:"Admin key:",login_btn:"Sign in",close:"Close",login_hint:"Key is validated on server. Data is stored globally.",set_hours:"Set working hours",single_date:"Single date",date:"Date:",closed:"Closed day",from:"From:",to:"To:",save:"Save override",delete:"Delete override",closed_note:"If “Closed day” is checked, no hours will be shown.",bulk_title:"Quick duplicate to range",bulk_hint:"Copies settings from source date to each day in range.",bulk_source:"Source date:",bulk_from:"Range from:",bulk_to:"Range to:",bulk_overwrite:"Overwrite existing overrides",bulk_apply:"Apply to range",saved_overrides:"Saved overrides",status:"Status",detail:"Detail",action:"Action",open_txt:"The clinic is open.",closed_txt:"The clinic is closed.",closed_day:"Closed (Sunday).",hours_fmt:(s,e)=>`Working hours ${s}–${e}.`,none_saved:"No overrides saved.",btn_delete:"Delete",alert_saved:"Saved.",alert_deleted:"Override deleted.",alert_need_date:"Pick a date.",alert_need_key:"Enter admin key.",alert_need_start_end:"Enter both start and end.",alert_end_after_start:"End must be after start.",confirm_sat_range:"Saturday is usually 10–14. Still save your custom range?",wrong_key:"Wrong admin key.",server_key_missing:"Admin key not configured on server."}
   };
   const LANG_KEY = "ord_lang";
   const langSel = document.getElementById("langSel");
@@ -188,7 +193,6 @@
   }
   function getISO(fp){ return fp && fp.input && fp.input.value ? fp.input.value : ""; }
   function setISO(fp, iso){ if (fp && iso) fp.setDate(iso, true); }
-  function todayISO(){ return fmtDateISO(new Date()); }
 
   /* ===== API ===== */
   async function apiGetOverrides(date) {
@@ -236,6 +240,15 @@
     }
   }
 
+  /* ===== UI helpers (inline poruke, bez alert) ===== */
+  function showMsg(id, text, ok=true){
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text || "";
+    el.className = ok ? "ok" : "err";
+    if (text) setTimeout(()=>{ el.textContent=""; }, 2000);
+  }
+
   /* ===== STATE ===== */
   let overrides = {};
   let adminKey = "";
@@ -243,7 +256,7 @@
   /* ===== STATUS ===== */
   async function loadOverrides() {
     try { overrides = await apiGetOverrides(); }
-    catch(e){ overrides = {}; console.warn(e); }
+    catch(e){ overrides = {}; showMsg("msg", e.message, false); }
     refreshOverridesTable();
   }
 
@@ -286,38 +299,60 @@
   const formView   = $("#formView");
   const overridesTable = $("#overridesTable tbody");
 
-  $("#openAdmin").addEventListener("click", () => {
+  $("#openAdmin").addEventListener("click", (e) => {
+    e.preventDefault(); e.stopPropagation();
     adminModal.classList.add("open");
     adminModal.setAttribute("aria-hidden","false");
     loginView.style.display = "block";
     formView.style.display = "none";
     $("#adminPass").value = "";
   });
-  function closeModal() {
+  function closeModal(e) {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
     adminModal.classList.remove("open");
     adminModal.setAttribute("aria-hidden","true");
   }
   $("#closeModal1").addEventListener("click", closeModal);
   $("#closeModal2").addEventListener("click", closeModal);
-  adminModal.addEventListener("click", (e) => { if (e.target === adminModal) closeModal(); });
+  adminModal.addEventListener("click", (e) => { if (e.target === adminModal) closeModal(e); });
 
-  $("#loginBtn").addEventListener("click", async () => {
+  // Blokiraj Enter da ne "submituje" ništa
+  document.addEventListener("keydown", (e)=>{
+    if (e.key === "Enter" && adminModal.classList.contains("open")) {
+      if (document.activeElement && document.activeElement.tagName !== "TEXTAREA") {
+        e.preventDefault(); e.stopPropagation();
+      }
+    }
+  });
+
+  $("#loginBtn").addEventListener("click", async (e) => {
+    e.preventDefault(); e.stopPropagation();
     const L = I18N[langSel.value] || I18N.sr;
     adminKey = $("#adminPass").value.trim();
-    if (!adminKey) return alert(L.alert_need_key);
+    if (!adminKey) return showMsg("msg", L.alert_need_key, false);
     const auth = await apiAuthCheck(adminKey);
     if (!auth.ok) {
-      if (auth.error === "unauthorized") return alert(L.wrong_key);
-      if (auth.error === "server_key_missing") return alert(L.server_key_missing);
-      return alert(auth.error || L.wrong_key);
+      if (auth.error === "unauthorized") return showMsg("msg", L.wrong_key, false);
+      if (auth.error === "server_key_missing") return showMsg("msg", L.server_key_missing, false);
+      return showMsg("msg", auth.error || L.wrong_key, false);
     }
     loginView.style.display = "none";
     formView.style.display = "block";
-
-    // Postavi današnji datum samo jednom pri ulasku
-    if (fpMain && !getISO(fpMain)) setISO(fpMain, todayISO());
+    if (fpMain && !getISO(fpMain)) setISO(fpMain, fmtDateISO(new Date()));
     await preloadForSelectedDate();
+    showMsg("msg2", "", true);
   });
+
+  let fpMain, fpSrc, fpFrom, fpTo;
+  function initPickers(){
+    const common = { dateFormat: "Y-m-d", altInput: true, altFormat: "d.m.Y", locale: "sr", disableMobile: true };
+    fpMain = flatpickr("#dateInput", { ...common, defaultDate: fmtDateISO(new Date()), onChange: () => preloadForSelectedDate() });
+    fpSrc  = flatpickr("#bulkSource", { ...common });
+    fpFrom = flatpickr("#bulkFrom",   { ...common });
+    fpTo   = flatpickr("#bulkTo",     { ...common });
+  }
+  function getISO(fp){ return fp && fp.input && fp.input.value ? fp.input.value : ""; }
+  function setISO(fp, iso){ if (fp && iso) fp.setDate(iso, true); }
 
   async function preloadForSelectedDate() {
     const iso = getISO(fpMain);
@@ -350,46 +385,47 @@
     return confirm(L.confirm_sat_range);
   }
 
-  $("#saveOverride").addEventListener("click", async () => {
+  $("#saveOverride").addEventListener("click", async (e) => {
+    e.preventDefault(); e.stopPropagation(); // nema submit, nema return
     const L = I18N[langSel.value] || I18N.sr;
     const iso = getISO(fpMain);
-    if (!iso) return alert(L.alert_need_date);
+    if (!iso) return showMsg("msg2", L.alert_need_date, false);
     const closed = $("#closedCheckbox").checked;
     const payload = { date: iso, closed };
     if (!closed) {
       const start = $("#startTime").value;
       const end   = $("#endTime").value;
-      if (!start || !end) return alert(L.alert_need_start_end);
+      if (!start || !end) return showMsg("msg2", L.alert_need_start_end, false);
       const toMin = (t)=>{const [h,m]=t.split(":").map(Number);return h*60+m;};
-      if (toMin(end) <= toMin(start)) return alert(L.alert_end_after_start);
+      if (toMin(end) <= toMin(start)) return showMsg("msg2", L.alert_end_after_start, false);
       if (!validateSaturdayRangeIfNeeded(iso, start, end)) return;
       payload.start = start;
       payload.end   = end;
     }
     try {
       await apiSaveOverride(payload, adminKey);
-      alert(L.alert_saved);
+      showMsg("msg2", L.alert_saved, true);
       await loadOverrides();
-      // NE mijenjaj selekciju datuma! samo učitaj za isti dan
-      await preloadForSelectedDate();
+      await preloadForSelectedDate(); // ostaje isti datum
       await renderStatus();
     } catch (e) {
-      alert(e.message || "Greška pri čuvanju");
+      showMsg("msg2", e.message || "Greška pri čuvanju", false);
     }
   });
 
-  $("#deleteOverride").addEventListener("click", async () => {
+  $("#deleteOverride").addEventListener("click", async (e) => {
+    e.preventDefault(); e.stopPropagation();
     const L = I18N[langSel.value] || I18N.sr;
     const iso = getISO(fpMain);
     if (!iso) return;
     try {
       await apiDeleteOverride(iso, adminKey);
-      alert(L.alert_deleted);
+      showMsg("msg2", L.alert_deleted, true);
       await loadOverrides();
       await preloadForSelectedDate();
       await renderStatus();
     } catch (e) {
-      alert(e.message || "Greška pri brisanju");
+      showMsg("msg2", e.message || "Greška pri brisanju", false);
     }
   });
 
@@ -423,12 +459,13 @@
       const btn = document.createElement("button");
       btn.className = "btn secondary";
       btn.textContent = I18N[langSel.value]?.btn_delete || "Obriši";
-      btn.addEventListener("click", async () => {
+      btn.addEventListener("click", async (e) => {
+        e.preventDefault(); e.stopPropagation();
         try {
           await apiDeleteOverride(date, adminKey);
           await loadOverrides(); await renderStatus();
         } catch (e) {
-          alert(e.message || "Greška");
+          showMsg("msg2", e.message || "Greška", false);
         }
       });
       tdAct.appendChild(btn);
@@ -436,46 +473,6 @@
       overridesTable.appendChild(tr);
     }
   }
-
-  function datesBetween(fromISO, toISO) {
-    const out = [];
-    let d = new Date(fromISO + "T00:00:00");
-    const end = new Date(toISO + "T00:00:00");
-    for (; d <= end; d.setDate(d.getDate()+1)) out.push(fmtDateISO(d));
-    return out;
-  }
-
-  document.getElementById("bulkApply").addEventListener("click", async ()=>{
-    const L = I18N[langSel.value] || I18N.sr;
-    const src = getISO(fpSrc);
-    const from = getISO(fpFrom);
-    const to = getISO(fpTo);
-    const overwrite = document.getElementById("bulkOverwrite").checked;
-    if (!src || !from || !to) return alert(L.alert_need_date);
-
-    let base = null;
-    try { const resp = await apiGetOverrides(src); base = resp && resp[src]; } catch {}
-    if (!base) base = standardHoursForDay(dayOfWeekISO(src));
-    if (!base.closed) {
-      const ok = validateSaturdayRangeIfNeeded(src, base.start, base.end);
-      if (!ok) return;
-    }
-
-    const days = datesBetween(from, to);
-    for (const day of days) {
-      if (!overwrite && overrides[day]) continue;
-      const payload = { date: day, closed: !!base.closed };
-      if (!base.closed) { payload.start = base.start; payload.end = base.end; }
-      if (!payload.closed && dayOfWeekISO(day) === 6) {
-        const ok = validateSaturdayRangeIfNeeded(day, payload.start, payload.end);
-        if (!ok) continue;
-      }
-      try { await apiSaveOverride(payload, adminKey); }
-      catch (e) { alert(e.message || "Greška pri snimanju"); break; }
-    }
-    await loadOverrides(); await renderStatus();
-    alert(L.alert_saved);
-  });
 
   (async () => {
     applyI18N();
