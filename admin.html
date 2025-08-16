@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Admin — Status ordinacije</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<style>
+  :root { color-scheme: light dark; }
+  body { background:#000; color:#fff; font-family: system-ui, Arial, sans-serif; margin:0; }
+  header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px; border-bottom:1px solid #222; }
+  main { max-width: 900px; margin: 0 auto; padding: 16px; }
+  a, .link { color:#4ade80; text-decoration: none; }
+  .card { background:#0b0b0b; border:1px solid #222; border-radius:14px; padding:16px; margin:12px 0; }
+  .row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:8px 0; }
+  label { font-size:14px; opacity:.9; }
+  input[type="password"], input[type="text"], input[type="time"] {
+    background:#000; color:#fff; border:1px solid #333; border-radius:10px; padding:8px 10px;
+  }
+  input[type="checkbox"] { transform: scale(1.2); }
+  .btn { background:#4ade80; color:#000; border:none; border-radius:10px; padding:10px 14px; font-weight:800; cursor:pointer; }
+  .btn.secondary { background:#1a1a1a; color:#fff; border:1px solid #333; }
+  .muted { opacity:.75; font-size:13px; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width: 760px){ .two{ grid-template-columns:1fr; } }
+  table { width:100%; border-collapse: collapse; }
+  th, td { padding:8px; border-bottom:1px solid #222; text-align:left; }
+  .chip { display:inline-block; padding:2px 8px; border-radius:999px; background:#141414; border:1px solid #333; font-size:12px; }
+  #msg, #msg2 { min-height:20px; font-size:13px; margin-top:6px; }
+  .ok { color:#4ade80; } .err { color:#ff6b6b; }
+</style>
+</head>
+<body>
+<header>
+  <div><strong>Admin — Status ordinacije</strong></div>
+  <nav><a class="link" href="/">← Nazad na sajt</a></nav>
+</header>
+
+<main>
+  <!-- Login -->
+  <section id="loginCard" class="card">
+    <h2>Prijava</h2>
+    <div class="row">
+      <label for="adminKey">Admin ključ:</label>
+      <input id="adminKey" type="password" placeholder="Unesite admin ključ" />
+      <button id="btnLogin" class="btn">Prijavi se</button>
+    </div>
+    <p class="muted">Ključ se provjerava na serveru (Netlify Function). Podaci se čuvaju globalno.</p>
+    <div id="msg"></div>
+  </section>
+
+  <!-- Forma -->
+  <section id="formCard" class="card" style="display:none;">
+    <div class="row" style="justify-content:space-between;">
+      <h2>Podesi radno vrijeme</h2>
+      <a class="link" href="#" id="btnLogout">Odjava</a>
+    </div>
+
+    <div class="two">
+      <div>
+        <div class="row">
+          <label for="dateInput" style="min-width:120px;">Datum:</label>
+          <input id="dateInput" type="text" placeholder="YYYY-MM-DD" />
+        </div>
+
+        <div class="row">
+          <label><input type="checkbox" id="closed" /> Neradni dan</label>
+        </div>
+
+        <div id="timeRow" class="row">
+          <label for="startTime" style="min-width:120px;">Od:</label>
+          <input type="time" id="startTime" value="10:00" />
+          <label for="endTime" style="min-width:60px;">Do:</label>
+          <input type="time" id="endTime" value="20:00" />
+        </div>
+
+        <div class="row">
+          <button id="btnSave" class="btn">Sačuvaj izuzetak</button>
+          <button id="btnDelete" class="btn secondary">Obriši izuzetak</button>
+        </div>
+        <div id="msg2"></div>
+      </div>
+
+      <div>
+        <h3>Sačuvani izuzeci</h3>
+        <table id="tbl">
+          <thead><tr><th>Datum</th><th>Status</th><th>Detalj</th><th>Akcija</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/sr.js"></script>
+<script>
+(function(){
+  const $ = (s)=>document.querySelector(s);
+  const ISO = /^\\d{4}-\\d{2}-\\d{2}$/;
+  function fmtDateISO(d){const y=d.getFullYear();const m=String(d.getMonth()+1).padStart(2,'0');const day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`;}
+  function toMin(t){const [h,m]=String(t||'').split(':').map(Number);return (h||0)*60+(m||0);}
+  function std(day){ if(day>=1&&day<=5) return {start:'10:00',end:'20:00',closed:false}; if(day===6) return {start:'10:00',end:'14:00',closed:false}; return {closed:true}; }
+  function showMsg(id, text, ok=true){ const el=$(id); if(!el) return; el.textContent=text||''; el.className = ok ? 'ok' : 'err'; if(text) setTimeout(()=>{ el.textContent=''; }, 2500); }
+
+  // API
+  async function apiGet(date){ const q = date?`?date=${encodeURIComponent(date)}`:''; const r = await fetch(`/api/overrides${q}`); const j=await r.json().catch(()=>({})); if(!r.ok||j.error) throw new Error(j.error||('HTTP '+r.status)); return j; }
+  async function apiPost(payload, key){ const r=await fetch(`/api/overrides`,{method:'POST',headers:{'Content-Type':'application/json','x-admin-key':key||''},body:JSON.stringify(payload)}); const j=await r.json().catch(()=>({})); if(!r.ok||j.error) throw new Error(j.error||('HTTP '+r.status)); return j; }
+  async function apiDel(date, key){ const r=await fetch(`/api/overrides?date=${encodeURIComponent(date)}`,{method:'DELETE',headers:{'x-admin-key':key||''}}); const j=await r.json().catch(()=>({})); if(!r.ok||j.error) throw new Error(j.error||('HTTP '+r.status)); return j; }
+  async function apiAuth(key){ try{ const r=await fetch(`/api/overrides`,{method:'POST',headers:{'Content-Type':'application/json','x-admin-key':key||''},body:'{}'}); if(r.status===400) return {ok:true}; if(r.status===401) return {ok:false,error:'unauthorized'}; const j=await r.json().catch(()=>({})); if(r.status===500&&(j.error||'').toLowerCase().includes('admin key not configured')) return {ok:false,error:'server_key_missing'}; return {ok:false,error:j.error||('HTTP '+r.status)}; }catch(e){ return {ok:false,error:e.message||'network'}; } }
+
+  // Login flow
+  const loginCard = '#loginCard', formCard = '#formCard';
+  $('#btnLogin').addEventListener('click', async ()=>{
+    const key = $('#adminKey').value.trim();
+    if(!key) return showMsg('#msg','Unesite admin ključ',false);
+    const a = await apiAuth(key);
+    if(!a.ok){ return showMsg('#msg', a.error==='unauthorized'?'Pogrešan admin ključ':(a.error||'Greška'), false); }
+    sessionStorage.setItem('adminkey', key);
+    $(loginCard).style.display='none'; $(formCard).style.display='block';
+    if(!$('#dateInput').value) fp.setDate(fmtDateISO(new Date()), true);
+    await preload();
+  });
+  $('#btnLogout').addEventListener('click', (e)=>{ e.preventDefault(); sessionStorage.removeItem('adminkey'); $(formCard).style.display='none'; $(loginCard).style.display='block'; });
+
+  // Flatpickr
+  let fp;
+  function initPicker(){
+    if(window.flatpickr){
+      fp = flatpickr('#dateInput', { dateFormat:'Y-m-d', altInput:true, altFormat:'d.m.Y', locale:'sr', disableMobile:true, defaultDate: fmtDateISO(new Date()), onChange: preloadSingle });
+    } else {
+      $('#dateInput').value = fmtDateISO(new Date());
+    }
+  }
+  function getISO(){ return fp && fp.input && fp.input.value ? fp.input.value : $('#dateInput').value; }
+
+  async function preloadSingle(){ const iso = getISO(); if(!ISO.test(iso)) return;
+    try{ const j = await apiGet(iso); const rec = j && j[iso]; fillForm(rec || std(new Date(iso+'T00:00:00').getDay())); }catch{ /*ignore*/ }
+  }
+  async function preload(){ try{ const all = await apiGet(); renderTable(all||{}); await preloadSingle(); } catch(e){ renderTable({}); showMsg('#msg', e.message, false); } }
+
+  function fillForm(rec){ const c = !!rec?.closed; $('#closed').checked = c; $('#timeRow').style.display = c?'none':'flex'; if(!c){ $('#startTime').value = rec.start || '10:00'; $('#endTime').value = rec.end || '20:00'; } }
+  $('#closed').addEventListener('change', ()=>{ $('#timeRow').style.display = $('#closed').checked ? 'none' : 'flex'; });
+
+  $('#btnSave').addEventListener('click', async ()=>{
+    const iso = getISO(); if(!ISO.test(iso)) return showMsg('#msg2','Izaberite datum (YYYY-MM-DD).', false);
+    const key = sessionStorage.getItem('adminkey') || '';
+    const closed = $('#closed').checked;
+    const payload = { date: iso, closed };
+    if(!closed){
+      const s=$('#startTime').value, e=$('#endTime').value;
+      if(!s||!e) return showMsg('#msg2','Unesite početak i kraj.', false);
+      if(toMin(e)<=toMin(s)) return showMsg('#msg2','Kraj mora biti poslije početka.', false);
+      payload.start = s; payload.end = e;
+    }
+    try{ await apiPost(payload, key); showMsg('#msg2', 'Sačuvano.', true); await preload(); } catch(err){ showMsg('#msg2', err.message||'Greška', false); }
+  });
+  $('#btnDelete').addEventListener('click', async ()=>{
+    const iso = getISO(); if(!ISO.test(iso)) return;
+    const key = sessionStorage.getItem('adminkey') || '';
+    try{ await apiDel(iso, key); showMsg('#msg2','Izuzetak obrisan.', true); await preload(); } catch(err){ showMsg('#msg2', err.message||'Greška', false); }
+  });
+
+  function renderTable(map){
+    const tb = document.querySelector('#tbl tbody'); tb.innerHTML='';
+    const entries = Object.entries(map||{}).filter(([k,v])=>/^\\d{4}-\\d{2}-\\d{2}$/.test(k) && v && typeof v==='object').sort(([a],[b])=>a.localeCompare(b));
+    if(entries.length===0){ const tr=document.createElement('tr'); const td=document.createElement('td'); td.colSpan=4; td.className='muted'; td.textContent='Nema sačuvanih izuzetaka.'; tr.appendChild(td); tb.appendChild(tr); return; }
+    for(const [date, val] of entries){
+      const tr=document.createElement('tr');
+      const tdD=document.createElement('td'); tdD.textContent=date;
+      const tdS=document.createElement('td'); tdS.innerHTML = val?.closed ? '<span class="chip">Neradni</span>' : '<span class="chip">Radi</span>';
+      const tdI=document.createElement('td'); tdI.textContent = val?.closed ? '—' : `${val.start}–${val.end}`;
+      const tdA=document.createElement('td'); const b=document.createElement('button'); b.className='btn secondary'; b.textContent='Obriši'; b.addEventListener('click', async ()=>{ const key=sessionStorage.getItem('adminkey')||''; try{ await apiDel(date, key); await preload(); }catch(e){ showMsg('#msg2', e.message||'Greška', false);} }); tdA.appendChild(b);
+      tr.append(tdD, tdS, tdI, tdA); tb.appendChild(tr);
+    }
+  }
+
+  (async()=>{ initPicker(); })();
+})();
+</script>
+</body>
+</html>
