@@ -160,11 +160,17 @@
   langSel.value = localStorage.getItem(LANG_KEY) || "sr";
   langSel.addEventListener("change", ()=>{ localStorage.setItem(LANG_KEY, langSel.value); applyI18N(); });
 
-  /* ===== API ===== */
+  /* ===== API (sa robustnim error handlingom) ===== */
   async function apiGetOverrides(date) {
     const q = date ? `?date=${encodeURIComponent(date)}` : "";
     const r = await fetch(`/api/overrides${q}`);
-    return r.json();
+    let data = null;
+    try { data = await r.json(); } catch {}
+    if (!r.ok || (data && data.error)) {
+      const msg = (data && data.error) ? data.error : `HTTP ${r.status}`;
+      throw new Error(msg);
+    }
+    return data || {};
   }
   async function apiSaveOverride(payload, adminKey) {
     const r = await fetch(`/api/overrides`, {
@@ -172,9 +178,20 @@
       headers: { "Content-Type": "application/json", "x-admin-key": adminKey || "" },
       body: JSON.stringify(payload)
     });
-    return r.json();
+    const data = await r.json().catch(()=>({}));
+    if (!r.ok || data.error) throw new Error(data.error || `HTTP ${r.status}`);
+    return data;
   }
-  // NEW: auth check before opening admin
+  async function apiDeleteOverride(date, adminKey) {
+    const r = await fetch(`/api/overrides?date=${encodeURIComponent(date)}`, {
+      method: "DELETE",
+      headers: { "x-admin-key": adminKey || "" }
+    });
+    const data = await r.json().catch(()=>({}));
+    if (!r.ok || data.error) throw new Error(data.error || `HTTP ${r.status}`);
+    return data;
+  }
+  // Serverski auth check
   async function apiAuthCheck(adminKey) {
     try {
       const r = await fetch(`/api/overrides`, {
@@ -182,7 +199,7 @@
         headers: { "Content-Type": "application/json", "x-admin-key": adminKey || "" },
         body: "{}"
       });
-      if (r.status === 400) return { ok: true }; // authorized, but "date required" (expected)
+      if (r.status === 400) return { ok: true };      // autorizovan, ali date required
       if (r.status === 401) return { ok: false, error: "unauthorized" };
       const j = await r.json().catch(()=>({}));
       if (r.status === 500 && (j?.error||"").toLowerCase().includes("admin key not configured")) {
@@ -193,13 +210,6 @@
       return { ok: false, error: e?.message || "network" };
     }
   }
-  async function apiDeleteOverride(date, adminKey) {
-    const r = await fetch(`/api/overrides?date=${encodeURIComponent(date)}`, {
-      method: "DELETE",
-      headers: { "x-admin-key": adminKey || "" }
-    });
-    return r.json();
-  }
 
   /* ===== UTIL ===== */
   const $ = (sel) => document.querySelector(sel);
@@ -209,7 +219,18 @@
     const day=String(d.getDate()).padStart(2,"0");
     return `${y}-${m}-${day}`;
   }
-  function minOf(hhmm){ const [h,m]=hhmm.split(":").map(Number); return h*60+m; }
+  function toISODateString(s){
+    if (!s) return "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;                 // YYYY-MM-DD
+    const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);         // MM/DD/YYYY
+    if (m) {
+      const [,mm,dd,yy] = m;
+      return `${yy}-${String(mm).padStart(2,"0")}-${String(dd).padStart(2,"0")}`;
+    }
+    const d = new Date(s);
+    return isNaN(d) ? s : fmtDateISO(d);                          // fallback
+  }
+  function minOf(hhmm){ const [h,m]=String(hhmm||"").split(":").map(Number); return (h||0)*60+(m||0); }
   function standardHoursForDay(day) {
     if (day >= 1 && day <= 5) return { start: "10:00", end: "20:00", closed: false };
     if (day === 6) return { start: "10:00", end: "14:00", closed: false };
@@ -223,7 +244,13 @@
 
   /* ===== STATUS ===== */
   async function loadOverrides() {
-    overrides = await apiGetOverrides();
+    try {
+      const res = await apiGetOverrides();
+      overrides = (res && typeof res === "object" && !Array.isArray(res)) ? res : {};
+    } catch (e) {
+      overrides = {};
+      console.warn("API get error:", e);
+    }
     refreshOverridesTable();
   }
 
@@ -232,7 +259,9 @@
     const now = new Date();
     const dow = now.getDay();
     const dateISO = fmtDateISO(now);
-    const plan = overrides?.[dateISO] ?? standardHoursForDay(dow);
+    const altUS = `${dateISO.slice(5,7)}/${dateISO.slice(8,10)}/${dateISO.slice(0,4)}`;
+
+    const plan = (overrides?.[dateISO] ?? overrides?.[altUS]) ?? standardHoursForDay(dow);
 
     const img = $("#statusImg");
     const txt = $("#statusText");
@@ -284,14 +313,12 @@
     adminKey = $("#adminPass").value.trim();
     if (!adminKey) return alert(L.alert_need_key);
 
-    // Validate with server before opening admin UI
     const auth = await apiAuthCheck(adminKey);
     if (!auth.ok) {
       if (auth.error === "unauthorized") return alert(L.wrong_key);
       if (auth.error === "server_key_missing") return alert(L.server_key_missing);
       return alert(auth.error || L.wrong_key);
     }
-
     loginView.style.display = "none";
     formView.style.display = "block";
     if (!$("#dateInput").value) $("#dateInput").value = fmtDateISO(new Date());
@@ -299,11 +326,15 @@
   });
 
   async function preloadForSelectedDate() {
-    const iso = $("#dateInput").value;
+    const iso = toISODateString($("#dateInput").value);
     if (!iso) return;
     const d = new Date(iso + "T00:00:00");
-    const resp = await apiGetOverrides(iso);
-    const base = (resp && resp[iso]) ?? standardHoursForDay(d.getDay());
+    let base = null;
+    try {
+      const resp = await apiGetOverrides(iso);
+      base = resp && resp[iso];
+    } catch {}
+    if (!base) base = standardHoursForDay(d.getDay());
     $("#closedCheckbox").checked = !!base.closed;
     $("#timeRow").style.display = base.closed ? "none" : "flex";
     if (!base.closed) {
@@ -330,7 +361,7 @@
 
   $("#saveOverride").addEventListener("click", async () => {
     const L = I18N[langSel.value] || I18N.sr;
-    const iso = $("#dateInput").value;
+    const iso = toISODateString($("#dateInput").value);
     if (!iso) return alert(L.alert_need_date);
     const closed = $("#closedCheckbox").checked;
     const payload = { date: iso, closed };
@@ -346,30 +377,47 @@
       payload.end   = end;
     }
 
-    const res = await apiSaveOverride(payload, adminKey);
-    if (res?.error) return alert(res.error);
-    alert(L.alert_saved);
-    await loadOverrides();
-    await preloadForSelectedDate();
-    await renderStatus();
+    try {
+      await apiSaveOverride(payload, adminKey);
+      alert(L.alert_saved);
+      await loadOverrides();
+      await preloadForSelectedDate();
+      await renderStatus();
+    } catch (e) {
+      alert(e.message || "Greška pri čuvanju");
+    }
   });
 
   $("#deleteOverride").addEventListener("click", async () => {
     const L = I18N[langSel.value] || I18N.sr;
-    const iso = $("#dateInput").value;
+    const iso = toISODateString($("#dateInput").value);
     if (!iso) return;
-    const res = await apiDeleteOverride(iso, adminKey);
-    if (res?.error) return alert(res.error);
-    alert(L.alert_deleted);
-    await loadOverrides();
-    await preloadForSelectedDate();
-    await renderStatus();
+    try {
+      await apiDeleteOverride(iso, adminKey);
+      alert(L.alert_deleted);
+      await loadOverrides();
+      await preloadForSelectedDate();
+      await renderStatus();
+    } catch (e) {
+      alert(e.message || "Greška pri brisanju");
+    }
   });
 
   function refreshOverridesTable() {
     const L = I18N[langSel.value] || I18N.sr;
     overridesTable.innerHTML = "";
-    const entries = Object.entries(overrides || {}).sort(([a],[b]) => a.localeCompare(b));
+    const entries = Object.entries(overrides || {})
+      .map(([k,v])=>{ // map US -> ISO za prikaz
+        const m = k && String(k).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (m) {
+          const [,mm,dd,yy]=m;
+          return [`${yy}-${String(mm).padStart(2,"0")}-${String(dd).padStart(2,"0")}`, v];
+        }
+        return [k,v];
+      })
+      .filter(([k,v]) => /^\d{4}-\d{2}-\d{2}$/.test(k) && v && typeof v === "object")
+      .sort(([a],[b]) => a.localeCompare(b));
+
     if (entries.length === 0) {
       const tr = document.createElement("tr");
       const td = document.createElement("td");
@@ -386,9 +434,12 @@
       btn.className = "btn secondary";
       btn.textContent = I18N[langSel.value]?.btn_delete || "Obriši";
       btn.addEventListener("click", async () => {
-        const res = await apiDeleteOverride(date, adminKey);
-        if (res?.error) return alert(res.error);
-        await loadOverrides(); await renderStatus();
+        try {
+          await apiDeleteOverride(date, adminKey);
+          await loadOverrides(); await renderStatus();
+        } catch (e) {
+          alert(e.message || "Greška");
+        }
       });
       tdAct.appendChild(btn);
       tr.append(tdDate, tdStatus, tdDetail, tdAct);
@@ -406,14 +457,18 @@
 
   document.getElementById("bulkApply").addEventListener("click", async ()=>{
     const L = I18N[langSel.value] || I18N.sr;
-    const src = document.getElementById("bulkSource").value;
-    const from = document.getElementById("bulkFrom").value;
-    const to = document.getElementById("bulkTo").value;
+    const src = toISODateString(document.getElementById("bulkSource").value);
+    const from = toISODateString(document.getElementById("bulkFrom").value);
+    const to = toISODateString(document.getElementById("bulkTo").value);
     const overwrite = document.getElementById("bulkOverwrite").checked;
     if (!src || !from || !to) return alert(L.alert_need_date);
 
-    const resp = await apiGetOverrides(src);
-    let base = (resp && resp[src]) || standardHoursForDay(dayOfWeekISO(src));
+    let base = null;
+    try {
+      const resp = await apiGetOverrides(src);
+      base = resp && resp[src];
+    } catch {}
+    if (!base) base = standardHoursForDay(dayOfWeekISO(src));
     if (!base.closed) {
       const ok = validateSaturdayRangeIfNeeded(src, base.start, base.end);
       if (!ok) return;
@@ -428,8 +483,11 @@
         const ok = validateSaturdayRangeIfNeeded(day, payload.start, payload.end);
         if (!ok) continue;
       }
-      const res = await apiSaveOverride(payload, adminKey);
-      if (res?.error) { alert(res.error); break; }
+      try {
+        await apiSaveOverride(payload, adminKey);
+      } catch (e) {
+        alert(e.message || "Greška pri snimanju"); break;
+      }
     }
     await loadOverrides(); await renderStatus();
     alert(L.alert_saved);
